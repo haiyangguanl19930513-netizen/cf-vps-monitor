@@ -5,6 +5,7 @@ import { Activity, ArrowDown, ArrowUp, BarChart3, TrendingUp } from 'lucide-reac
 import Flag from './Flag';
 import PriceTags from './PriceTags';
 import MiniPingChartFloat from './MiniPingChartFloat';
+import SichuanNetworkQuality from './SichuanNetworkQuality';
 import { diskUsagePresentation, formatLastReport, formatMetricBytes, formatMetricSpeed, formatMetricUptime, metricNumber, resourceUsage, type NodeStatus } from '../utils/nodeMetrics';
 import { formatTrafficLimitLabel, parseTrafficLimitType } from '../utils/traffic';
 import { ClientInfo, LiveRecord } from '../types';
@@ -397,6 +398,8 @@ export default function NodeCard({ client, live, online, status, lastReportTime,
                 historical={nodeStatus === 'offline'}
               />
             </div>
+
+            <SichuanNetworkQuality uuid={client.uuid} includeHidden={includeHidden} />
           </Flex>
         </Flex>
       </Link>

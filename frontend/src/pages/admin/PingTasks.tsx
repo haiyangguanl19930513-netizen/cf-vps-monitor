@@ -16,11 +16,12 @@ import {
   Text,
   TextField,
 } from '@radix-ui/themes';
-import { Activity, ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, Network, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import Loading from '../../components/Loading';
 import { useApi } from '../../contexts/AuthContext';
 import { useAdminAction } from '../../hooks/useAdminAction';
+import { SICHUAN_NETWORK_PRESETS } from '../../utils/sichuanNetwork';
 
 interface PingTask {
   id: number;
@@ -439,6 +440,32 @@ export default function AdminPingTasks() {
     void ensureClients();
   };
 
+  const handleAddSichuanNetworks = () => runAction('ping:add-sichuan-networks', async () => {
+    const existingTargets = new Set(tasks.map((task) => task.target.trim()));
+    const missing = SICHUAN_NETWORK_PRESETS.filter((preset) => !existingTargets.has(preset.target));
+    if (missing.length === 0) {
+      toast.info('四川三网任务已经配置');
+      return;
+    }
+
+    for (const preset of missing) {
+      const result = await apiFetch('/admin/ping/add', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: preset.name,
+          type: 'icmp',
+          target: preset.target,
+          clients: [],
+          all_clients: true,
+        }),
+      });
+      if (!result.success) throw new Error(result.error || `${preset.name}添加失败`);
+    }
+
+    await loadData();
+    toast.success(`已添加 ${missing.length} 个四川三网任务`);
+  });
+
   const handleDelete = () => runAction('ping:delete', async () => {
     if (!deleteTask) return;
     const result = await apiFetch('/admin/ping/delete', {
@@ -503,7 +530,16 @@ export default function AdminPingTasks() {
             <Tabs.Trigger value="server">服务器视图</Tabs.Trigger>
           </Tabs.List>
         </Tabs.Root>
-        <Button onClick={openAdd}><Plus size={16} /> 添加任务</Button>
+        <Flex gap="2" wrap="wrap">
+          <Button
+            variant="soft"
+            onClick={handleAddSichuanNetworks}
+            disabled={pendingActions.has('ping:add-sichuan-networks')}
+          >
+            <Network size={16} /> 添加四川三网
+          </Button>
+          <Button onClick={openAdd}><Plus size={16} /> 添加任务</Button>
+        </Flex>
       </Flex>
 
       <Card>

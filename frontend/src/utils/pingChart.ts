@@ -297,6 +297,7 @@ export async function fetchPingTaskSeries(
     rangeHours,
     cursor = new Date().toISOString(),
     includeHidden = false,
+    taskFilter,
     signal,
   }: {
     limit?: number;
@@ -304,6 +305,7 @@ export async function fetchPingTaskSeries(
     rangeHours?: number;
     cursor?: string;
     includeHidden?: boolean;
+    taskFilter?: (task: NormalizedPingTask) => boolean;
     signal?: AbortSignal;
   } = {},
 ): Promise<PingTaskSeries[]> {
@@ -316,7 +318,7 @@ export async function fetchPingTaskSeries(
     .filter((task) => pingTaskAppliesToClient(task, uuid))
     .map((task, index) => normalizePingTask(task, index))
     .filter((task): task is NormalizedPingTask => Boolean(task));
-  const tasks = applicableTasks.slice(0, maxTasks);
+  const tasks = (taskFilter ? applicableTasks.filter(taskFilter) : applicableTasks).slice(0, maxTasks);
 
   const requestLimitForTask = (task: NormalizedPingTask) => {
     if (rangeHours && rangeHours > 0) {
