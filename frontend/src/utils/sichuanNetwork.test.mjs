@@ -6,6 +6,7 @@ const {
   formatPacketLoss,
   identifySichuanCarrier,
 } = await import('./sichuanNetwork.ts');
+const { buildPingLossChartRows } = await import('./pingChart.ts');
 
 assert.deepEqual(
   SICHUAN_NETWORK_PRESETS.map(({ name, target }) => [name, target]),
@@ -49,3 +50,22 @@ assert.deepEqual(calculatePingQuality([], 60), {
 assert.equal(formatPacketLoss(0), '0%');
 assert.equal(formatPacketLoss(0.4), '<1%');
 assert.equal(formatPacketLoss(12.5), '13%');
+
+const lossStart = Date.parse('2026-09-14T00:00:00.000Z');
+const lossEnd = Date.parse('2026-09-14T00:01:00.000Z');
+assert.deepEqual(buildPingLossChartRows([
+  {
+    task: { id: 1, key: 'task_1', label: '线路 1', target: 'one.example', type: 'PING', intervalSec: 60, color: '#f00' },
+    records: [
+      { time: '2026-09-14T00:00:00.000Z', value: 80 },
+      { time: '2026-09-14T00:01:00.000Z', value: -1 },
+    ],
+  },
+  {
+    task: { id: 2, key: 'task_2', label: '线路 2', target: 'two.example', type: 'PING', intervalSec: 60, color: '#0f0' },
+    records: [{ time: '2026-09-14T00:00:00.000Z', value: -1 }],
+  },
+]), [
+  { time: lossStart, task_1: 0, task_2: 100 },
+  { time: lossEnd, task_1: 100, task_2: 100 },
+]);

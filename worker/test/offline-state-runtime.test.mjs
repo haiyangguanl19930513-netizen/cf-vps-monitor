@@ -49,6 +49,10 @@ test('native Durable Object storage retains offline HTTP and WebSocket metrics a
   await reportAndAck(ws, { cpu: 47, disk: null, disk_total: 5024_000_000, uptime: null,
     sort_order: -999, timestamp: sampledAt, arbitrary_extension: 'PRIVATE_RUNTIME_EXTENSION' });
   ws.close();
+  await eventually(async () => (await snapshot()).online.includes('offline-ws'));
+  // The production Agent reconnects after five seconds. A short durable grace
+  // prevents transient edge/WebSocket resets from flashing the node offline.
+  await new Promise(resolve => setTimeout(resolve, 20_100));
   await eventually(async () => !(await snapshot()).online.includes('offline-ws'));
 
   await t.test('a closed native socket remains displayable through public HTTP without becoming online', async () => {

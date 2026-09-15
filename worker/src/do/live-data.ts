@@ -102,9 +102,10 @@ const VIEWER_MAX_TTL_MS = 60 * 60 * 1000;
 const VIEWER_DEFAULT_TTL_MS = 120 * 1000;
 const VIEWER_MAX_TOTAL_SESSIONS = 128;
 const VIEWER_MAX_SESSIONS_PER_IP = 8;
+// Agent reconnects after 5 seconds. Keep its last live state briefly so a
+// transient edge/WebSocket reset does not flash every node offline.
+const AGENT_RECONNECT_GRACE_MS = 20_000;
 const PING_RESULT_STORAGE_PREFIX = 'ping-result:';
-const PING_VALUE_CHANGE_THRESHOLD_MS = 5;
-const PING_UNCHANGED_HEARTBEAT_MS = 30 * 60_000;
 const GPU_SNAPSHOT_META_PREFIX = 'gpu-snapshot-meta:';
 const GPU_SNAPSHOT_UNCHANGED_HEARTBEAT_MS = 30 * 60_000;
 const GPU_UTILIZATION_BUCKET_PERCENT = 5;
@@ -1426,7 +1427,7 @@ export class LiveDataDO {
     }
   }
 
-  private cleanupSession(ws: WebSocket, attachment: SessionAttachment): void {
+  private async cleanupSession(ws: WebSocket, attachment: SessionAttachment): Promise<void> {
     if (this.sessions.get(attachment.clientId) !== ws) return;
 
     const existing = this.clients.get(attachment.clientId);
@@ -1436,10 +1437,23 @@ export class LiveDataDO {
 
     if (attachment.role !== 'agent') return;
 
-    this.clients.delete(attachment.clientId);
-    if (existing) {
-      this.broadcastOfflineClient(existing, Date.now());
-    }
+    if (!existing) return;
+
+    const now = Date.now();
+    const reconnectGrace: ClientState = {
+      ...existing,
+      expiresAt: now + AGENT_RECONNECT_GRACE_MS,
+      // An expiring fallback is restored from Durable Object storage after a
+      // hibernation just like an HTTP report. A reconnect replaces it with ws.
+      transport: 'http',
+    };
+    this.clients.set(attachment.clientId, reconnectGrace);
+    this.lastKnownClients.set(attachment.clientId, {
+      ...reconnectGrace,
+      lastReport: compactLiveReport(reconnectGrace.lastReport),
+    });
+    await this.persistClientSnapshot(reconnectGrace);
+    await this.scheduleExpiryAlarm(now);
   }
 
   private async upsertAgentAuthSnapshot(request: Request): Promise<Response> {
@@ -2300,7 +2314,7 @@ export class LiveDataDO {
     if (attachment) {
       const wasViewer = attachment.role === 'viewer';
       const activeViewersBefore = this.activeViewerCount(Date.now());
-      this.cleanupSession(ws, attachment);
+      await this.cleanupSession(ws, attachment);
       if (wasViewer && activeViewersBefore > 0) {
         await this.broadcastAgentPolicy(Date.now(), false);
       }
@@ -2313,7 +2327,7 @@ export class LiveDataDO {
     if (attachment) {
       const wasViewer = attachment.role === 'viewer';
       const activeViewersBefore = this.activeViewerCount(Date.now());
-      this.cleanupSession(ws, attachment);
+      await this.cleanupSession(ws, attachment);
       if (wasViewer && activeViewersBefore > 0) {
         await this.broadcastAgentPolicy(Date.now(), false);
       }
@@ -2726,26 +2740,6 @@ export class LiveDataDO {
     return state;
   }
 
-  private async writePingResultState(key: string, state: PingResultState): Promise<void> {
-    await this.state.storage.put(key, state);
-    this.pingResultStateCache.set(key, state);
-  }
-
-  private shouldPersistPingResult(result: PingPersistenceResult, state: PingResultState, nowMs: number): boolean {
-    const previousValue = Number(state.value);
-    const previousPersistedAt = Number(state.persistedAt || 0);
-    if (!Number.isFinite(previousValue) || !Number.isFinite(previousPersistedAt) || previousPersistedAt <= 0) {
-      return true;
-    }
-
-    const currentLost = result.value === PING_LOSS_VALUE;
-    const previousLost = previousValue === PING_LOSS_VALUE;
-    if (currentLost !== previousLost) return true;
-    if (currentLost) return nowMs - previousPersistedAt >= PING_UNCHANGED_HEARTBEAT_MS;
-    if (Math.abs(result.value - previousValue) >= PING_VALUE_CHANGE_THRESHOLD_MS) return true;
-    return nowMs - previousPersistedAt >= PING_UNCHANGED_HEARTBEAT_MS;
-  }
-
   private async markPingResultsPersisted(clientId: string, results: PingPersistenceResult[], nowMs: number): Promise<void> {
     const updates: Record<string, PingResultState> = {};
     for (const result of results) {
@@ -2994,7 +2988,6 @@ export class LiveDataDO {
     nowMs: number,
   ): Promise<PingPersistenceResult[]> {
     const accepted: PingPersistenceResult[] = [];
-    const dueResults: PingPersistenceResult[] = [];
     for (const result of results) {
       const minIntervalMs = this.pingResultIntervalMs(result.intervalSec);
       const key = this.pingResultStateKey(clientId, result.taskId);
@@ -3002,20 +2995,11 @@ export class LiveDataDO {
       if (state.lastAcceptedMs && nowMs - state.lastAcceptedMs < minIntervalMs) {
         continue;
       }
-      const shouldPersist = this.shouldPersistPingResult(result, state, nowMs);
-      dueResults.push(result);
-      if (!shouldPersist) {
-        continue;
-      }
+      // The configured interval is the user's requested sampling interval.
+      // Keep every due sample, including unchanged latency, so the history
+      // chart and loss statistics continue to advance once per minute.
       accepted.push(result);
     }
-    if (accepted.length > 0) return dueResults;
-    // Intentional unchanged-value compression has no SQL write to await.
-    for (const result of dueResults) {
-      const key = this.pingResultStateKey(clientId, result.taskId);
-      const state = await this.readPingResultState(key);
-      await this.writePingResultState(key, { ...state, lastAcceptedMs: nowMs });
-    }
-    return [];
+    return accepted;
   }
 }

@@ -84,6 +84,8 @@ for (const transport of ['http', 'websocket']) {
       await wsReport(f, agent, report);
       agent.ws.close();
       await f.object.webSocketClose(agent.ws);
+      f.advance(20_001);
+      await f.object.alarm();
     }
     await f.storage.drain();
     for (const object of [f.object, f.cold()]) {
@@ -123,19 +125,41 @@ test('an expired HTTP node keeps its final metrics for new viewers and cold reco
   assert.equal(offline?.last_known?.cpu, 17);
 });
 
-test('a disconnected WebSocket node is retained without restoring online from its stored report', async () => {
+test('a disconnected WebSocket node gets a reconnect grace before becoming retained offline state', async () => {
   const f = fixture();
   const agent = f.agent();
   await wsReport(f, agent);
   assert.ok(agent.messages.some(message => message.type === 'ack'));
   agent.ws.close();
   await f.object.webSocketClose(agent.ws);
+  assert.deepEqual((await snapshot(f.object)).online, ['node']);
+  assert.equal(f.viewers[0].messages.some(message => message.type === 'remove'), false);
+  assert.deepEqual((await snapshot(f.cold())).online, ['node'], 'the grace survives Durable Object reconstruction');
+  f.advance(20_001);
+  await f.object.alarm();
   for (const object of [f.object, f.cold()]) {
     const live = await snapshot(object);
     assert.deepEqual(live.online, []);
     assert.equal(live.last_known?.node?.cpu, 23);
   }
   assert.equal(f.viewers[0].messages.find(message => message.type === 'remove')?.reason, 'offline');
+});
+
+test('a WebSocket reconnect inside the grace never broadcasts a false offline event', async () => {
+  const f = fixture();
+  const first = f.agent();
+  await wsReport(f, first, { cpu: 21 });
+  first.ws.close();
+  await f.object.webSocketClose(first.ws);
+  f.advance(5_000);
+  const replacement = f.agent();
+  await wsReport(f, replacement, { cpu: 22 });
+  f.advance(20_001);
+  await f.object.alarm();
+  const live = await snapshot(f.object);
+  assert.deepEqual(live.online, ['node']);
+  assert.equal(live.data.node.cpu, 22);
+  assert.equal(f.viewers[0].messages.some(message => message.type === 'remove'), false);
 });
 
 test('legacy HTTP entries retain their TTL while expired entries remain displayable', async () => {
@@ -166,6 +190,8 @@ test('cold reconstruction keeps a newer HTTP fallback measurement over an older 
   assert.equal(live.data.node.disk_total, 5024_000_000);
   socket.ws.close();
   await restored.webSocketClose(socket.ws);
+  f.advance(20_001);
+  await restored.alarm();
   assert.equal((await snapshot(restored)).last_known.node.cpu, 31);
 });
 
@@ -288,6 +314,8 @@ test('a failed post-write control read preserves the previous acknowledged repor
   assert.equal(agent.messages.filter(message => message.type === 'ack').length, acknowledgements);
   agent.ws.close();
   await f.object.webSocketClose(agent.ws);
+  f.advance(20_001);
+  await f.object.alarm();
   assert.equal((await snapshot(f.cold())).last_known?.node?.cpu, 23);
 });
 

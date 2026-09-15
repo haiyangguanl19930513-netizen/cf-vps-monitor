@@ -1071,7 +1071,7 @@ body {
 
 .node-resource-ring-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 4px 0 2px;
 }
@@ -1464,12 +1464,12 @@ html[data-monitor-theme='monitor'] .node-card-monitor-layout {
 
 html[data-monitor-theme='monitor'] .node-resource-ring-grid {
   padding-top: 12px;
-  gap: 14px;
+  gap: 6px;
 }
 
 html[data-monitor-theme='monitor'] .node-resource-ring-chart {
   --monitor-ring-mask: color-mix(in srgb, var(--monitor-panel-strong) 88%, #e5e7eb 12%);
-  width: clamp(78px, 8vw, 96px);
+  width: clamp(62px, 5.5vw, 68px);
   background:
     radial-gradient(circle at center, var(--monitor-panel-strong) 56%, transparent 57%),
     conic-gradient(from -90deg, transparent 0 var(--metric-percent), var(--monitor-ring-mask) var(--metric-percent) 100%),
@@ -4069,6 +4069,80 @@ html[data-monitor-theme='aurora'] .nav-logo-mark {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.instance-ping-quality-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--gray-5);
+  border-radius: 8px;
+}
+
+.instance-ping-quality-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.instance-ping-quality-table caption {
+  padding: 9px 12px;
+  color: var(--gray-12);
+  background: color-mix(in srgb, var(--accent-3) 48%, var(--color-panel-solid));
+  font-weight: 600;
+  text-align: left;
+}
+
+.instance-ping-quality-table th,
+.instance-ping-quality-table td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--gray-4);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.instance-ping-quality-table thead th {
+  color: var(--gray-10);
+  background: var(--gray-a2);
+  font-weight: 500;
+}
+
+.instance-ping-quality-table tbody th {
+  font-weight: 600;
+}
+
+.instance-ping-quality-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 999px;
+}
+
+.instance-ping-loss {
+  display: inline-flex;
+  min-width: 48px;
+  justify-content: center;
+  padding: 2px 7px;
+  color: var(--gray-11);
+  background: var(--gray-a3);
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.instance-ping-loss[data-state="good"] {
+  color: var(--green-11);
+  background: var(--green-a3);
+}
+
+.instance-ping-loss[data-state="warn"] {
+  color: var(--amber-11);
+  background: var(--amber-a3);
+}
+
+.instance-ping-loss[data-state="bad"] {
+  color: var(--red-11);
+  background: var(--red-a3);
 }
 
 .instance-top-summary {

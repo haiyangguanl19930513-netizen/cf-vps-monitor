@@ -252,6 +252,11 @@ export default function NodeCard({ client, live, online, status, lastReportTime,
     }
   })();
   const trafficPct = client.traffic_limit > 0 && trafficUsed !== null ? Math.min(100, (trafficUsed / client.traffic_limit) * 100) : undefined;
+  const trafficRingTitle = trafficLimitLabel
+    ? trafficUsed === null
+      ? `${trafficLimitLabel} · 暂无本周期流量数据`
+      : `本周期已用 ${formatMetricBytes(trafficUsed)} / ${trafficLimitLabel}`
+    : '未设置流量限额';
   const hasBillingInfo = (client.price !== undefined && client.price !== 0) || Boolean(getExpiryInfo(client.expired_at).label);
   const handleCardLinkClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     const target = event.target as HTMLElement | null;
@@ -387,6 +392,7 @@ export default function NodeCard({ client, live, online, status, lastReportTime,
                 <RingMetric label="CPU" percent={cpuPct} />
                 <RingMetric label="RAM" percent={memPct} />
                 <RingMetric label={disk.estimated ? 'Disk（估算）' : 'Disk'} percent={diskPct} estimated={disk.estimated} title={disk.estimated ? `${disk.description} ${disk.detail} ${disk.sampleLabel}` : undefined} />
+                <RingMetric label="流量" percent={trafficPct ?? null} title={trafficRingTitle} />
               </div>
 
               <NetworkSummary

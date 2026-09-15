@@ -35,6 +35,38 @@ async function cardOrder(page) {
 }
 
 try {
+  await check('NODE-traffic-ring', 'monitor cards show billing-cycle traffic utilization as a fourth ring', async (page, data) => {
+    data.clients[0] = {
+      ...data.clients[0],
+      traffic_limit: 100 * 1024 * 1024 * 1024,
+      traffic_limit_type: 'sum',
+    };
+    const live = snapshot(data);
+    data.handlers.push(async ({ path, json }) => {
+      if (path === '/api/public/bootstrap') {
+        await json({ clients: data.clients, settings: data.settings, live });
+        return true;
+      }
+      if (path === '/api/live/clients') {
+        await json(live);
+        return true;
+      }
+      return false;
+    });
+
+    await page.goto(origin + '/');
+    const card = page.locator('#node-a');
+    const trafficRing = card.locator('.node-resource-ring').filter({ hasText: '流量' });
+    await trafficRing.getByText('30%', { exact: true }).waitFor();
+    assert.equal(await card.locator('.node-resource-ring').count(), 4);
+    assert.equal(await trafficRing.getAttribute('title'), '本周期已用 30.0 GB / 总计 (100 GB)');
+
+    const ringGrid = await card.locator('.node-resource-ring-grid').boundingBox();
+    const lastRing = await card.locator('.node-resource-ring').last().boundingBox();
+    assert.ok(ringGrid && lastRing && lastRing.x + lastRing.width <= ringGrid.x + ringGrid.width + 1, 'the fourth ring must remain inside the node card');
+    data.observed = { ringCount: 4, trafficPercent: '30%', title: await trafficRing.getAttribute('title') };
+  });
+
   await check('NODE-return-order', 'returning from detail never renders report-arrival order', async (page, data, context) => {
     fourClients(data);
     const sockets = [];

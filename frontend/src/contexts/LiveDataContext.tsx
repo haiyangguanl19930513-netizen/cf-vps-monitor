@@ -670,6 +670,10 @@ export function LiveDataProvider({ children, enabled = true, viewer = true }: Li
             const patched = scope.patch(message);
             if (patched !== undefined) setLiveData(patched);
             if (scope.hasSnapshot) setLoading(false);
+            // A viewer socket and Agent sockets can be reset independently by
+            // the edge. Reconcile immediately so a stale remove event cannot
+            // leave the page stuck offline after the Agent has reconnected.
+            if (!document.hidden && message.reason === 'offline') void fetchLiveData();
             return;
           }
           if (isViewerExpiredMessage(message)) {
@@ -876,7 +880,10 @@ export function LiveDataProvider({ children, enabled = true, viewer = true }: Li
 
     const poll = async () => {
       if (polling || cancelled) return;
-      if (wsOpenRef.current) {
+      // Even an OPEN WebSocket can be attached to an edge connection that is
+      // no longer receiving current Agent updates. The idle HTTP snapshot is a
+      // low-frequency consistency check, not only a disconnected fallback.
+      if (wsOpenRef.current && document.hidden) {
         scheduleNextPoll();
         return;
       }
@@ -898,7 +905,7 @@ export function LiveDataProvider({ children, enabled = true, viewer = true }: Li
 
     const refreshVisibleData = () => {
       // visibilitychange 在"切走"时也会触发，那一次拉取没有任何人会看到。
-      if (cancelled || document.hidden || wsOpenRef.current) return;
+      if (cancelled || document.hidden) return;
       activeSinceRef.current = Date.now();
       void fetchLiveData();
     };

@@ -210,6 +210,41 @@ export function buildPingChartRows(series: PingTaskSeries[]) {
   return Object.values(grouped).sort((a, b) => Number(a.time) - Number(b.time));
 }
 
+export function buildPingLossChartRows(series: PingTaskSeries[]) {
+  const validIntervals = series
+    .map((item) => item.task.intervalSec)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const minInterval = validIntervals.length ? Math.min(...validIntervals) : 60;
+  const toleranceMs = Math.min(1500, Math.max(800, Math.floor(minInterval * 1000 * 0.4)));
+  const anchors: number[] = [];
+  const grouped: Record<number, PingChartRow> = {};
+  const latestTimestamp = getLatestPingTimestamp(series);
+
+  for (const item of series) {
+    const records = [...item.records].sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+    for (const record of records) {
+      const timestamp = Date.parse(record.time);
+      if (!Number.isFinite(timestamp)) continue;
+
+      const anchor = findAnchor(anchors, timestamp, toleranceMs);
+      const useTimestamp = anchor ?? timestamp;
+      if (!grouped[useTimestamp]) {
+        grouped[useTimestamp] = { time: useTimestamp };
+        if (anchor === null) anchors.push(useTimestamp);
+      }
+      grouped[useTimestamp][item.task.key] = record.value < 0 ? 100 : 0;
+    }
+
+    const latestRecord = records[records.length - 1];
+    if (latestTimestamp !== null && latestRecord) {
+      if (!grouped[latestTimestamp]) grouped[latestTimestamp] = { time: latestTimestamp };
+      grouped[latestTimestamp][item.task.key] = latestRecord.value < 0 ? 100 : 0;
+    }
+  }
+
+  return Object.values(grouped).sort((a, b) => Number(a.time) - Number(b.time));
+}
+
 function getLatestPingTimestamp(series: PingTaskSeries[]) {
   const timestamps = series.flatMap((item) =>
     item.records

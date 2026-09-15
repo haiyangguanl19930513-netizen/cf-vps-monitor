@@ -33,6 +33,7 @@ import {
 } from 'recharts';
 import {
   buildPingChartRows,
+  buildPingLossChartRows,
   fetchPingTaskSeries,
   formatPingMs,
   getPingSeriesAverage,
@@ -41,6 +42,7 @@ import {
   getPingYAxisDomain,
   PingTaskSeries,
 } from '../utils/pingChart';
+import { calculatePingQuality, formatPacketLoss } from '../utils/sichuanNetwork';
 import { buildMonitorChartData, getMonitorChartRenderData } from '../utils/monitorChartData';
 import { monitorYAxisProps, pingYAxisProps, wideYAxisProps } from '../utils/monitorChartAxis';
 import { chartTooltipProps } from '../utils/chartTooltip';
@@ -79,6 +81,7 @@ const timeRangePointLimit: Record<TimeRange, number> = {
 const monitorChartMargin = { top: 12, right: 16, bottom: 4, left: 4 };
 const monitorChartHeight = 296;
 const pingChartHeight = 210;
+const pingLossChartHeight = 160;
 
 function historyQuery(params: Record<string, string | number | undefined>): string {
   const query = new URLSearchParams();
@@ -311,6 +314,7 @@ export default function Instance() {
 
   const pingSeriesWithRecords = getPingSeriesWithRecords(pingSeries);
   const pingChartRows = buildPingChartRows(pingSeriesWithRecords);
+  const pingLossChartRows = buildPingLossChartRows(pingSeriesWithRecords);
   const pingYAxisDomain = getPingYAxisDomain(pingSeriesWithRecords);
   const pingXAxisDomain = getPingTimeDomain(pingSeriesWithRecords, timeRangeHours[timeRange]);
 
@@ -633,6 +637,100 @@ export default function Instance() {
                   </div>
                 );
               })}
+            </div>
+
+            <Flex justify="between" align="center" mt="4" mb="2" gap="3" wrap="wrap">
+              <Text size="2" weight="bold">Ping 丢包</Text>
+              <Text size="1" color="gray">0% 正常 · 100% 超时</Text>
+            </Flex>
+
+            <ResponsiveContainer width="100%" height={pingLossChartHeight}>
+              <LineChart data={pingLossChartRows} margin={monitorChartMargin}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
+                <XAxis
+                  dataKey="time"
+                  type="number"
+                  domain={pingXAxisDomain}
+                  tickFormatter={chartTimeFormatter}
+                  fontSize={12}
+                  minTickGap={28}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  {...pingYAxisProps}
+                  domain={[0, 100]}
+                  ticks={[0, 25, 50, 75, 100]}
+                  allowDecimals={false}
+                  tickFormatter={(value) => `${Number(value).toFixed(0)}%`}
+                />
+                <Tooltip
+                  {...chartTooltipProps}
+                  labelFormatter={chartTimeFormatter}
+                  formatter={(value: number, name) => [
+                    `${Number(value).toFixed(0)}%`,
+                    name,
+                  ]}
+                />
+                {pingSeriesWithRecords.map((item) => (
+                  <Line
+                    key={item.task.key}
+                    type="stepAfter"
+                    dataKey={item.task.key}
+                    name={item.task.label}
+                    stroke={item.task.color}
+                    strokeWidth={2.5}
+                    dot={{ r: 2 }}
+                    connectNulls
+                    isAnimationActive={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+
+            <div className="instance-ping-quality-table-wrap">
+              <table className="instance-ping-quality-table">
+                <caption>当前范围延迟与丢包</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">线路</th>
+                    <th scope="col">平均延迟</th>
+                    <th scope="col">丢包率</th>
+                    <th scope="col">估算样本</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pingSeriesWithRecords.map((item) => {
+                    const quality = calculatePingQuality(item.records, item.task.intervalSec);
+                    const lossState = quality.lossPercent === null
+                      ? 'empty'
+                      : quality.lossPercent === 0
+                        ? 'good'
+                        : quality.lossPercent < 10
+                          ? 'warn'
+                          : 'bad';
+                    return (
+                      <tr key={item.task.key} title={`${item.task.type} ${item.task.target}`}>
+                        <th scope="row">
+                          <span
+                            aria-hidden="true"
+                            className="instance-ping-quality-dot"
+                            style={{ background: item.task.color }}
+                          />
+                          <span style={{ color: item.task.color }}>{item.task.label}</span>
+                        </th>
+                        <td>{quality.averageMs === null ? '全部超时' : formatPingMs(quality.averageMs)}</td>
+                        <td>
+                          <span className="instance-ping-loss" data-state={lossState}>
+                            {formatPacketLoss(quality.lossPercent)}
+                          </span>
+                        </td>
+                        <td>{quality.totalSamples || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </>
         )}
